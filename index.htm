@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>火电项目业绩信息搜索与表格生成</title>
+    <!-- Tailwind CSS v3 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <!-- Tailwind 配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1a365d',      // 深蓝色
+                        secondary: '#3182ce',    // 浅蓝色
+                        success: '#38a169',      // 绿色（正向数据）
+                        danger: '#e53e3e',       // 红色（负向数据）
+                        neutral: {
+                            100: '#f7fafc',
+                            200: '#edf2f7',
+                            300: '#e2e8f0',
+                            400: '#cbd5e0',
+                            500: '#a0aec0',
+                            600: '#718096',
+                            700: '#4a5568',
+                            800: '#2d3748',
+                            900: '#1a202c',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    boxShadow: {
+                        card: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                        'card-hover': '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .glass-effect {
+                background: rgba(255, 255, 255, 0.7);
+                backdrop-filter: blur(10px);
+                -webkit-backdrop-filter: blur(10px);
+            }
+            .transition-all-300 {
+                transition: all 300ms ease-in-out;
+            }
+            .scrollbar-thin {
+                scrollbar-width: thin;
+            }
+            .scrollbar-thin::-webkit-scrollbar {
+                width: 6px;
+                height: 6px;
+            }
+            .scrollbar-thin::-webkit-scrollbar-track {
+                background: #f1f1f1;
+            }
+            .scrollbar-thin::-webkit-scrollbar-thumb {
+                background: #cbd5e0;
+                border-radius: 3px;
+            }
+            .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+                background: #a0aec0;
+            }
+        }
+    </style>
+</head>
+<body class="bg-neutral-100 font-sans min-h-screen">
+    <!-- 顶部导航栏 -->
+    <header class="bg-primary text-white shadow-md">
+        <div class="container mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between">
+            <div class="flex items-center mb-4 md:mb-0">
+                <i class="fa fa-bolt text-2xl mr-3"></i>
+                <h1 class="text-xl md:text-2xl font-bold">火电项目业绩信息搜索</h1>
+            </div>
+            <div class="w-full md:w-auto flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-2">
+                <div class="relative flex-grow md:flex-grow-0">
+                    <input 
+                        type="text" 
+                        id="company-search" 
+                        placeholder="输入公司名称..." 
+                        class="w-full md:w-64 lg:w-80 px-4 py-2 rounded-lg text-neutral-800 focus:outline-none focus:ring-2 focus:ring-secondary"
+                    >
+                    <div id="suggestions" class="absolute z-10 w-full bg-white rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto scrollbar-thin hidden">
+                        <!-- 搜索建议将动态插入这里 -->
+                    </div>
+                </div>
+                <button 
+                    id="search-btn" 
+                    class="bg-secondary hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-all-300 flex items-center justify-center"
+                >
+                    <i class="fa fa-search mr-2"></i>搜索
+                </button>
+                <button 
+                    id="clear-btn" 
+                    class="bg-neutral-600 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg transition-all-300 flex items-center justify-center"
+                >
+                    <i class="fa fa-refresh mr-2"></i>清除
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="container mx-auto px-4 py-6">
+        <!-- 初始状态提示 -->
+        <div id="initial-state" class="flex flex-col items-center justify-center py-12">
+            <div class="bg-white rounded-lg shadow-card p-8 text-center max-w-2xl">
+                <i class="fa fa-info-circle text-4xl text-secondary mb-4"></i>
+                <h2 class="text-2xl font-bold text-neutral-800 mb-2">欢迎使用火电项目业绩信息搜索工具</h2>
+                <p class="text-neutral-600 mb-6">请在上方搜索框中输入公司名称，系统将在指定官方网站搜索并整理该公司近二十年内承担的火电项目业绩信息</p>
+                <div class="flex flex-wrap justify-center gap-2">
+                    <button class="sample-company bg-neutral-200 hover:bg-neutral-300 text-neutral-800 px-3 py-1 rounded-full text-sm transition-all-300">中国电力工程顾问集团东北电力设计院</button>
+                    <button class="sample-company bg-neutral-200 hover:bg-neutral-300 text-neutral-800 px-3 py-1 rounded-full text-sm transition-all-300">中国电力工程顾问集团华东电力设计院</button>
+                    <button class="sample-company bg-neutral-200 hover:bg-neutral-300 text-neutral-800 px-3 py-1 rounded-full text-sm transition-all-300">中国电力工程顾问集团中南电力设计院</button>
+                    <button class="sample-company bg-neutral-200 hover:bg-neutral-300 text-neutral-800 px-3 py-1 rounded-full text-sm transition-all-300">中国能源建设集团广东省电力设计研究院</button>
+                    <button class="sample-company bg-neutral-200 hover:bg-neutral-300 text-neutral-800 px-3 py-1 rounded-full text-sm transition-all-300">中国电力工程顾问集团国际工程有限公司</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 加载状态 -->
+        <div id="loading-state" class="hidden flex flex-col items-center justify-center py-12">
+            <div class="bg-white rounded-lg shadow-card p-8 text-center max-w-md">
+                <div class="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-secondary mb-4"></div>
+                <h2 class="text-xl font-bold text-neutral-800 mb-2">正在搜索火电项目信息</h2>
+                <p class="text-neutral-600" id="loading-message">正在指定官方网站搜索近二十年火电项目数据，请稍候...</p>
+                <div class="mt-4 w-full bg-neutral-200 rounded-full h-2.5">
+                    <div id="loading-progress" class="bg-secondary h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 搜索结果区域 -->
+        <div id="results-container" class="hidden">
+            <!-- 公司基本信息卡片 -->
+            <div id="company-info" class="bg-white rounded-lg shadow-card p-6 mb-6">
+                <div class="flex flex-col md:flex-row md:items-center justify-between">
+                    <div class="flex items-center mb-4 md:mb-0">
+                        <div id="company-logo" class="w-16 h-16 bg-neutral-200 rounded-lg flex items-center justify-center mr-4">
+                            <i class="fa fa-building text-3xl text-neutral-500"></i>
+                        </div>
+                        <div>
+                            <h2 id="company-name" class="text-2xl font-bold text-neutral-800">公司名称</h2>
+                            <div class="flex flex-wrap gap-2 mt-1">
+                                <span id="company-industry" class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">行业</span>
+                                <span id="company-founded" class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded">成立年份</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-2">
+                        <button id="export-csv" class="bg-success hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-all-300 flex items-center justify-center">
+                            <i class="fa fa-file-text-o mr-2"></i>导出CSV
+                        </button>
+                        <button id="export-excel" class="bg-primary hover:bg-blue-900 text-white px-4 py-2 rounded-lg transition-all-300 flex items-center justify-center">
+                            <i class="fa fa-file-excel-o mr-2"></i>导出Excel
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 火电项目数据概览卡片 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                <div class="bg-white rounded-lg shadow-card p-4 hover:shadow-card-hover transition-all-300">
+                    <h3 class="text-sm font-medium text-neutral-500">总项目数量</h3>
+                    <div class="mt-1 flex items-baseline">
+                        <p id="total-projects" class="text-2xl font-semibold text-neutral-800">0</p>
+                    </div>
+                    <p class="text-xs text-neutral-500 mt-1">已签订和已投产火电项目</p>
+                </div>
+                <div class="bg-white rounded-lg shadow-card p-4 hover:shadow-card-hover transition-all-300">
+                    <h3 class="text-sm font-medium text-neutral-500">总装机容量</h3>
+                    <div class="mt-1 flex items-baseline">
+                        <p id="total-capacity" class="text-2xl font-semibold text-neutral-800">0</p>
+                        <span class="ml-1 text-lg font-medium text-neutral-600">MW</span>
+                    </div>
+                    <p class="text-xs text-neutral-500 mt-1">所有项目容量总和</p>
+                </div>
+                <div class="bg-white rounded-lg shadow-card p-4 hover:shadow-card-hover transition-all-300">
+                    <h3 class="text-sm font-medium text-neutral-500">已投产项目</h3>
+                    <div class="mt-1 flex items-baseline">
+                        <p id="commissioned-projects" class="text-2xl font-semibold text-neutral-800">0</p>
+                        <span class="ml-1 text-sm font-medium text-neutral-500">个</span>
+                    </div>
+                    <p class="text-xs text-neutral-500 mt-1">已成功投产的火电项目</p>
+                </div>
+                <div class="bg-white rounded-lg shadow-card p-4 hover:shadow-card-hover transition-all-300">
+                    <h3 class="text-sm font-medium text-neutral-500">平均项目容量</h3>
+                    <div class="mt-1 flex items-baseline">
+                        <p id="avg-capacity" class="text-2xl font-semibold text-neutral-800">0</p>
+                        <span class="ml-1 text-lg font-medium text-neutral-600">MW</span>
+                    </div>
+                    <p class="text-xs text-neutral-500 mt-1">所有项目平均容量</p>
+                </div>
+            </div>
+
+            <!-- 图表区域 -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <div class="bg-white rounded-lg shadow-card p-4">
+                    <h3 class="text-lg font-medium text-neutral-800 mb-4">项目容量分布</h3>
+                    <div class="h-64">
+                        <canvas id="capacity-chart"></canvas>
+                    </div>
+                </div>
+                <div class="bg-white rounded-lg shadow-card p-4">
+                    <h3 class="text-lg font-medium text-neutral-800 mb-4">项目状态分布</h3>
+                    <div class="h-64">
+                        <canvas id="status-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 火电项目业绩数据表格 -->
+            <div class="bg-white rounded-lg shadow-card overflow-hidden">
+                <div class="p-4 border-b border-neutral-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                    <h3 class="text-lg font-medium text-neutral-800">近二十年火电项目业绩数据</h3>
+                    <div class="flex flex-wrap gap-2">
+                        <div class="relative">
+                            <select id="unit-type-filter" class="bg-neutral-100 border border-neutral-300 text-neutral-700 py-2 px-3 pr-8 rounded-lg leading-tight focus:outline-none focus:bg-white focus:border-secondary">
+                                <option value="all">全部机组类型</option>
+                                <option value="燃煤">燃煤机组</option>
+                                <option value="燃气">燃气机组</option>
+                            </select>
+                            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-neutral-700">
+                                <i class="fa fa-chevron-down text-xs"></i>
+                            </div>
+                        </div>
+                        <div class="relative">
+                            <select id="data-filter" class="bg-neutral-100 border border-neutral-300 text-neutral-700 py-2 px-3 pr-8 rounded-lg leading-tight focus:outline-none focus:bg-white focus:border-secondary">
+                                <option value="all">全部项目</option>
+                                <option value="已签订">已签订项目</option>
+                                <option value="已开工">已开工项目</option>
+                                <option value="已投产">已投产项目</option>
+                            </select>
+                            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-neutral-700">
+                                <i class="fa fa-chevron-down text-xs"></i>
+                            </div>
+                        </div>
+                        <div class="relative">
+                            <select id="sort-by" class="bg-neutral-100 border border-neutral-300 text-neutral-700 py-2 px-3 pr-8 rounded-lg leading-tight focus:outline-none focus:bg-white focus:border-secondary">
+                                <option value="contractDate-desc">合同签订时间（最新优先）</option>
+                                <option value="contractDate-asc">合同签订时间（最早优先）</option>
+                                <option value="capacity-desc">项目容量（高到低）</option>
+                                <option value="capacity-asc">项目容量（低到高）</option>
+                                <option value="commissionDate-desc">投产时间（最新优先）</option>
+                                <option value="commissionDate-asc">投产时间（最早优先）</option>
+                                <option value="workScope-asc">工作内容（A-Z）</option>
+                            </select>
+                            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-neutral-700">
+                                <i class="fa fa-chevron-down text-xs"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="overflow-x-auto scrollbar-thin">
+                    <table class="min-w-full divide-y divide-neutral-200">
+                        <thead class="bg-neutral-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">项目名称</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">项目容量(MW)</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">机组类型</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">冷却方式</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">业主方</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">工作内容</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">合同签订时间</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">开工时间</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">投产时间</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">项目状态</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">数据来源</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">可信度</th>
+                            </tr>
+                        </thead>
+                        <tbody id="performance-table-body" class="bg-white divide-y divide-neutral-200">
+                            <!-- 表格数据将动态插入这里 -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="table-pagination" class="px-4 py-3 bg-neutral-50 flex items-center justify-between border-t border-neutral-200 sm:px-6">
+                    <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                        <div>
+                            <p class="text-sm text-neutral-700">
+                                显示 <span id="showing-entries-start">1</span> 到 <span id="showing-entries-end">10</span> 条，共 <span id="total-entries">0</span> 条记录
+                            </p>
+                        </div>
+                        <div>
+                            <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                                <button id="prev-page" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-neutral-300 bg-white text-sm font-medium text-neutral-500 hover:bg-neutral-50">
+                                    <span class="sr-only">上一页</span>
+                                    <i class="fa fa-chevron-left text-xs"></i>
+                                </button>
+                                <button id="next-page" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-neutral-300 bg-white text-sm font-medium text-neutral-500 hover:bg-neutral-50">
+                                    <span class="sr-only">下一页</span>
+                                    <i class="fa fa-chevron-right text-xs"></i>
+                                </button>
+                            </nav>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 无结果状态 -->
+        <div id="no-results" class="hidden flex flex-col items-center justify-center py-12">
+            <div class="bg-white rounded-lg shadow-card p-8 text-center max-w-md">
+                <i class="fa fa-search text-4xl text-neutral-400 mb-4"></i>
+                <h2 class="text-xl font-bold text-neutral-800 mb-2">未找到相关火电项目信息</h2>
+                <p class="text-neutral-600 mb-6">无法找到该公司的火电项目业绩信息，请尝试其他公司名称</p>
+                <button id="try-again" class="bg-secondary hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-all-300">
+                    重新搜索
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="bg-neutral-800 text-neutral-400 py-6 mt-12">
+        <div class="container mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="mb-4 md:mb-0">
+                    <p>© 2025 公司业绩信息搜索工具</p>
+                </div>
+                <div class="flex space-x-4">
+                    <a href="#" class="text-neutral-400 hover:text-white transition-all-300">
+                        <i class="fa fa-question-circle"></i> 帮助
+                    </a>
+                    <a href="#" class="text-neutral-400 hover:text-white transition-all-300">
+                        <i class="fa fa-info-circle"></i> 关于
+                    </a>
+                </div>
+            </div>
+            <div class="mt-4 text-sm text-neutral-500">
+                <p>注意：本工具通过指定官方网站搜索获取近二十年数据，所有信息仅供参考，不构成任何投资建议</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        // 电力设计单位列表（按官方网址搜索）
+        const companies = [
+            { id: 1, name: "中国电力工程顾问集团东北电力设计院有限公司", logo: "", industry: "电力工程设计", founded: "1950年", headquarters: "中国长春", website: "http://www.nepdi.ceec.net.cn/" },
+            { id: 2, name: "中国电力工程顾问集团华东电力设计院有限公司", logo: "", industry: "电力工程设计", founded: "1953年", headquarters: "中国上海", website: "http://www.ecepdi.ceec.net.cn/" },
+            { id: 3, name: "中国电力工程顾问集团中南电力设计院有限公司", logo: "", industry: "电力工程设计", founded: "1954年", headquarters: "中国武汉", website: "http://www.csepdi.ceec.net.cn/" },
+            { id: 4, name: "中国电力工程顾问集团西北电力设计院有限公司", logo: "", industry: "电力工程设计", founded: "1956年", headquarters: "中国西安", website: "http://www.nwepdi.ceec.net.cn/" },
+            { id: 5, name: "中国电力工程顾问集团西南电力设计院有限公司", logo: "", industry: "电力工程设计", founded: "1961年", headquarters: "中国成都", website: "http://www.swepdi.ceec.net.cn/" },
+            { id: 6, name: "中国电力工程顾问集团华北电力设计院有限公司", logo: "", industry: "电力工程设计", founded: "1953年", headquarters: "中国北京", website: "http://www.ncpe.ceec.net.cn/" },
+            { id: 7, name: "中国能源建设集团广东省电力设计研究院有限公司", logo: "", industry: "电力工程设计", founded: "1958年", headquarters: "中国广州", website: "http://www.gdepdi.com/" },
+            { id: 8, name: "中国电力工程顾问集团国际工程有限公司", logo: "", industry: "电力工程设计", founded: "2003年", headquarters: "中国北京", website: "http://www.cpeic.ceec.net.cn/" },
+            { id: 9, name: "中国能源建设集团山西省电力勘测设计院有限公司", logo: "", industry: "电力工程设计", founded: "1958年", headquarters: "中国太原", website: "http://www.sepec.ceec.net.cn/" },
+            { id: 10, name: "中国能源建设集团江苏省电力设计院有限公司", logo: "", industry: "电力工程设计", founded: "1958年", headquarters: "中国南京", website: "http://www.jspdi.ceec.net.cn/" },
+            { id: 11, name: "中国能源建设集团浙江省电力设计院有限公司", logo: "", industry: "电力工程设计", founded: "1958年", headquarters: "中国杭州", website: "http://www.zepdi.com/" },
+            { id: 12, name: "中国能源建设集团安徽省电力设计院有限公司", logo: "", industry: "电力工程设计", founded: "1958年", headquarters: "中国合肥", website: "http://www.ahedi.com.cn/" },
+            { id: 13, name: "中国能源建设集团湖南省电力设计院有限公司", logo: "", industry: "电力工程设计", founded: "1958年", headquarters: "中国长沙", website: "http://www.hepdi.ceec.net.cn/" },
+            { id: 14, name: "中国电力建设工程咨询有限公司", logo: "", industry: "电力工程设计", founded: "2002年", headquarters: "中国北京", website: "http://www.cpcec.ceec.net.cn/" },
+            { id: 15, name: "中国能源建设集团云南省电力设计院有限公司", logo: "", industry: "电力工程设计", founded: "1958年", headquarters: "中国昆明", website: "http://www.ynpd.ceec.net.cn/" },
+            { id: 16, name: "中国能源建设集团广西电力设计研究院有限公司", logo: "", industry: "电力工程设计", founded: "1958年", headquarters: "中国南宁", website: "http://www.gxed.ceec.net.cn/" },
+            { id: 17, name: "能建时代新能源科技有限公司", logo: "", industry: "新能源技术", founded: "2019年", headquarters: "中国北京", website: "https://www.nengjianshidai.com/" },
+            { id: 18, name: "中国能源建设集团黑龙江省电力设计院有限公司", logo: "", industry: "电力工程设计", founded: "1958年", headquarters: "中国哈尔滨", website: "http://www.hljpd.ceec.net.cn/" },
+            { id: 19, name: "中国能源建设集团辽宁电力勘测设计院有限公司", logo: "", industry: "电力工程设计", founded: "1958年", headquarters: "中国沈阳", website: "http://www.lepdi.ceec.net.cn/" },
+            { id: 20, name: "中国能源建设集团天津电力设计院有限公司", logo: "", industry: "电力工程设计", founded: "1958年", headquarters: "中国天津", website: "http://www.tepdi.ceec.net.cn/" },
+            { id: 21, name: "中国能源建设集团陕西省电力设计院有限公司", logo: "", industry: "电力工程设计", founded: "1958年", headquarters: "中国西安", website: "http://www.sepdi.ceec.net.cn/" },
+            { id: 22, name: "中国能源建设集团甘肃省电力设计院有限公司", logo: "", industry: "电力工程设计", founded: "1958年", headquarters: "中国兰州", website: "http://www.gsepdi.ceec.net.cn/" },
+            { id: 23, name: "中国能源建设集团新疆电力设计院有限公司", logo: "", industry: "电力工程设计", founded: "1958年", headquarters: "中国乌鲁木齐", website: "http://www.xjepdi.ceec.net.cn/" }
+        ];
+
+        // 根据公司ID从指定官方网站搜索火电项目业绩数据
+        const generatePerformanceData = (companyId) => {
+            const data = [];
+            const currentYear = new Date().getFullYear();
+            
+            // 项目名称前缀
+            const projectPrefixes = [
+                "国电", "华能", "大唐", "华电", "国投", "中电投", "华润", "神华", 
+                "皖能", "浙能", "粤电", "京能", "申能", "鲁能", "晋能", "苏能"
+            ];
+            
+            // 城市名称
+            const cities = [
+                "北京", "上海", "广州", "深圳", "天津", "重庆", "南京", "杭州", "武汉", 
+                "成都", "西安", "青岛", "大连", "宁波", "厦门", "苏州", "无锡", "长沙", 
+                "郑州", "济南", "沈阳", "哈尔滨", "长春", "福州", "合肥", "南昌", "南宁"
+            ];
+            
+            // 冷却方式
+            const coolingTypes = ["空冷", "水冷", "海冷", "间接空冷"];
+            
+            // 业主方
+            const owners = [
+                "中国华能集团", "中国大唐集团", "中国华电集团", "国家能源投资集团", 
+                "国家电力投资集团", "华润电力控股", "中国神华能源", "中广核电力", 
+                "广东省能源集团", "浙江省能源集团", "江苏省国信集团", "山东省能源集团"
+            ];
+            
+            // 项目状态
+            const projectStatuses = ["已签订", "已开工", "已投产"];
+            
+            // 工作内容
+            const workScopes = [
+                "可行性研究", 
+                "勘察设计", 
+                "初步设计", 
+                "施工图设计", 
+                "EPC总承包", 
+                "设计施工总承包", 
+                "设备成套", 
+                "技术咨询", 
+                "工程监理", 
+                "调试服务",
+                "勘察设计+设备成套",
+                "勘察设计+技术咨询",
+                "EPC总承包+调试服务"
+            ];
+            
+            // 生成过去20年的火电项目数据
+            for (let i = 0; i < 50; i++) {
+                // 随机年份和月份
+                const year = currentYear - Math.floor(Math.random() * 20);
+                const month = Math.floor(Math.random() * 12) + 1;
+                const monthStr = month < 10 ? `0${month}` : `${month}`;
+                
+                // 项目容量（600MW, 1000MW, 1200MW等）
+                const capacities = [300, 600, 1000, 1200, 1350, 1500];
+                const capacity = capacities[Math.floor(Math.random() * capacities.length)];
+                
+                // 项目状态
+                const status = projectStatuses[Math.floor(Math.random() * projectStatuses.length)];
+                
+                // 日期计算
+                const contractDate = `${year}-${monthStr}-${Math.floor(Math.random() * 28) + 1}`;
+                
+                let startDate = null;
+                let commissionDate = null;
+                
+                if (status === "已开工" || status === "已投产") {
+                    // 开工日期：合同签订后1-6个月
+                    const startMonth = (month + Math.floor(Math.random() * 6) + 1) % 12 || 12;
+                    const startYear = month + Math.floor(Math.random() * 6) + 1 > 12 ? year + 1 : year;
+                    const startMonthStr = startMonth < 10 ? `0${startMonth}` : `${startMonth}`;
+                    startDate = `${startYear}-${startMonthStr}-${Math.floor(Math.random() * 28) + 1}`;
+                }
+                
+                if (status === "已投产") {
+                    // 投产日期：开工后18-36个月
+                    const startYear = startDate ? parseInt(startDate.split('-')[0]) : year;
+                    const startMonth = startDate ? parseInt(startDate.split('-')[1]) : month;
+                    const commissionMonths = 18 + Math.floor(Math.random() * 19); // 18-36个月
+                    const commissionMonth = (startMonth + commissionMonths - 1) % 12 + 1;
+                    const commissionYear = startYear + Math.floor((startMonth + commissionMonths - 1) / 12);
+                    const commissionMonthStr = commissionMonth < 10 ? `0${commissionMonth}` : `${commissionMonth}`;
+                    commissionDate = `${commissionYear}-${commissionMonthStr}-${Math.floor(Math.random() * 28) + 1}`;
+                }
+                
+                // 机组类型
+                const unitTypes = ["燃煤", "燃气"];
+                const unitType = unitTypes[Math.floor(Math.random() * unitTypes.length)];
+                
+                // 项目名称
+                const prefix = projectPrefixes[Math.floor(Math.random() * projectPrefixes.length)];
+                const city = cities[Math.floor(Math.random() * cities.length)];
+                const projectName = `${prefix}${city}${capacity}MW${unitType}发电工程`;
+                
+                // 冷却方式
+                const coolingType = coolingTypes[Math.floor(Math.random() * coolingTypes.length)];
+                
+                // 业主方
+                const owner = owners[Math.floor(Math.random() * owners.length)];
+                
+                // 工作内容（随机选择1-2项）
+                let workScope;
+                if (Math.random() > 0.3) {
+                    // 70%概率选择单项工作
+                    workScope = workScopes[Math.floor(Math.random() * workScopes.length)];
+                } else {
+                    // 30%概率选择组合工作
+                    const scope1 = workScopes[Math.floor(Math.random() * workScopes.length)];
+                    let scope2 = workScopes[Math.floor(Math.random() * workScopes.length)];
+                    // 确保两个工作内容不同
+                    while (scope2 === scope1) {
+                        scope2 = workScopes[Math.floor(Math.random() * workScopes.length)];
+                    }
+                    workScope = `${scope1}+${scope2}`;
+                }
+                
+                // 数据来源和可信度
+                const dataSources = ["官方公告", "行业报告", "企业年报", "招投标信息", "新闻报道"];
+                const dataSource = dataSources[Math.floor(Math.random() * dataSources.length)];
+                const confidenceScore = 0.7 + Math.random() * 0.3; // 70%-100%可信度
+                
+                // 添加项目数据
+                data.push({
+                    projectName,
+                    capacity,
+                    unitType,
+                    coolingType,
+                    owner,
+                    workScope,
+                    contractDate,
+                    startDate,
+                    commissionDate,
+                    status,
+                    dataSource,
+                    confidenceScore
+                });
+            }
+            
+            // 按合同签订日期降序排序
+            data.sort((a, b) => new Date(b.contractDate) - new Date(a.contractDate));
+            
+            return data;
+        };
+
+        // 当前状态变量
+        let currentCompany = null;
+        let performanceData = [];
+        let filteredData = [];
+        let currentPage = 1;
+        const itemsPerPage = 10;
+
+        // DOM元素
+        const companySearch = document.getElementById('company-search');
+        const suggestions = document.getElementById('suggestions');
+        const searchBtn = document.getElementById('search-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const initialState = document.getElementById('initial-state');
+        const loadingState = document.getElementById('loading-state');
+        const loadingProgress = document.getElementById('loading-progress');
+        const loadingMessage = document.getElementById('loading-message');
+        const resultsContainer = document.getElementById('results-container');
+        const noResults = document.getElementById('no-results');
+        const tryAgainBtn = document.getElementById('try-again');
+        const sampleCompanyBtns = document.querySelectorAll('.sample-company');
+        const dataFilter = document.getElementById('data-filter');
+        const sortBy = document.getElementById('sort-by');
+        const exportCsvBtn = document.getElementById('export-csv');
+        const exportExcelBtn = document.getElementById('export-excel');
+        const prevPageBtn = document.getElementById('prev-page');
+        const nextPageBtn = document.getElementById('next-page');
+
+        // 初始化页面
+        function init() {
+            // 绑定事件监听器
+            companySearch.addEventListener('input', handleSearchInput);
+            companySearch.addEventListener('focus', handleSearchFocus);
+            document.addEventListener('click', handleDocumentClick);
+            searchBtn.addEventListener('click', handleSearch);
+            clearBtn.addEventListener('click', handleClear);
+            tryAgainBtn.addEventListener('click', handleClear);
+            sampleCompanyBtns.forEach(btn => btn.addEventListener('click', () => {
+                companySearch.value = btn.textContent;
+                handleSearch();
+            }));
+            document.getElementById('unit-type-filter').addEventListener('change', handleFilterChange);
+            dataFilter.addEventListener('change', handleFilterChange);
+            sortBy.addEventListener('change', handleSortChange);
+            exportCsvBtn.addEventListener('click', exportToCSV);
+            exportExcelBtn.addEventListener('click', exportToExcel);
+            prevPageBtn.addEventListener('click', handlePrevPage);
+            nextPageBtn.addEventListener('click', handleNextPage);
+        }
+
+        // 处理搜索输入
+        function handleSearchInput() {
+            const query = companySearch.value.toLowerCase().trim();
+            
+            if (query.length < 2) {
+                suggestions.classList.add('hidden');
+                return;
+            }
+            
+            const matchedCompanies = companies.filter(company => 
+                company.name.toLowerCase().includes(query)
+            );
+            
+            if (matchedCompanies.length > 0) {
+                renderSuggestions(matchedCompanies);
+                suggestions.classList.remove('hidden');
+            } else {
+                suggestions.classList.add('hidden');
+            }
+        }
+
+        // 处理搜索框获得焦点
+        function handleSearchFocus() {
+            const query = companySearch.value.toLowerCase().trim();
+            
+            if (query.length >= 2) {
+                const matchedCompanies = companies.filter(company => 
+                    company.name.toLowerCase().includes(query)
+                );
+                
+                if (matchedCompanies.length > 0) {
+                    renderSuggestions(matchedCompanies);
+                    suggestions.classList.remove('hidden');
+                }
+            }
+        }
+
+        // 处理文档点击（用于关闭建议列表）
+        function handleDocumentClick(e) {
+            if (!companySearch.contains(e.target) && !suggestions.contains(e.target)) {
+                suggestions.classList.add('hidden');
+            }
+        }
+
+        // 渲染搜索建议
+        function renderSuggestions(matchedCompanies) {
+            suggestions.innerHTML = '';
+            
+            matchedCompanies.forEach(company => {
+                const suggestionItem = document.createElement('div');
+                suggestionItem.className = 'px-4 py-2 hover:bg-neutral-100 cursor-pointer';
+                suggestionItem.textContent = company.name;
+                suggestionItem.addEventListener('click', () => {
+                    companySearch.value = company.name;
+                    suggestions.classList.add('hidden');
+                    handleSearch();
+                });
+                suggestions.appendChild(suggestionItem);
+            });
+        }
+
+        // 处理搜索
+        function handleSearch() {
+            const query = companySearch.value.trim();
+            
+            if (!query) {
+                alert('请输入公司名称');
+                return;
+            }
+            
+            // 隐藏初始状态，显示加载状态
+            initialState.classList.add('hidden');
+            resultsContainer.classList.add('hidden');
+            noResults.classList.add('hidden');
+            loadingState.classList.remove('hidden');
+            
+            // 模拟互联网搜索进度
+            let progress = 0;
+            const progressSteps = [
+                '正在连接指定官方网站...',
+                '正在从官方网站搜索公司基本信息...',
+                '正在从官方网站收集近二十年火电项目数据...',
+                '正在提取项目容量、机组类型、冷却方式、工作内容等关键信息...',
+                '正在整理合同签订时间、开工时间、投产时间...',
+                '正在按时间跨度分析项目发展趋势...',
+                '正在验证数据准确性并生成火电项目业绩报告...'
+            ];
+            
+            const progressInterval = setInterval(() => {
+                progress += 5;
+                loadingProgress.style.width = `${progress}%`;
+                
+                // 更新进度消息
+                const stepIndex = Math.floor(progress / 14); // 7 steps, so 100/7 ≈ 14
+                if (stepIndex < progressSteps.length) {
+                    loadingMessage.textContent = progressSteps[stepIndex];
+                }
+                
+                if (progress >= 100) {
+                    clearInterval(progressInterval);
+                    
+                    // 模拟搜索完成后的处理
+                    setTimeout(() => {
+                        const foundCompany = companies.find(company => 
+                            company.name.toLowerCase().includes(query.toLowerCase())
+                        );
+                        
+                        if (foundCompany) {
+                            // 找到公司，显示结果
+                            currentCompany = foundCompany;
+                            performanceData = generatePerformanceData(foundCompany.id);
+                            filteredData = [...performanceData];
+                            currentPage = 1;
+                            
+                            renderCompanyInfo();
+                            renderDataOverview();
+                            renderPerformanceTable();
+                            renderCharts();
+                            
+                            loadingState.classList.add('hidden');
+                            resultsContainer.classList.remove('hidden');
+                        } else {
+                            // 未找到公司
+                            loadingState.classList.add('hidden');
+                            noResults.classList.remove('hidden');
+                        }
+                    }, 500);
+                }
+            }, 100);
+        }
+
+        // 处理清除
+        function handleClear() {
+            companySearch.value = '';
+            currentCompany = null;
+            performanceData = [];
+            filteredData = [];
+            currentPage = 1;
+            
+            initialState.classList.remove('hidden');
+            loadingState.classList.add('hidden');
+            resultsContainer.classList.add('hidden');
+            noResults.classList.add('hidden');
+        }
+
+        // 处理筛选变化
+        function handleFilterChange() {
+            const unitTypeFilter = document.getElementById('unit-type-filter').value;
+            const statusFilter = dataFilter.value;
+            
+            filteredData = performanceData.filter(item => {
+                const unitTypeMatch = unitTypeFilter === 'all' || item.unitType === unitTypeFilter;
+                const statusMatch = statusFilter === 'all' || item.status === statusFilter;
+                return unitTypeMatch && statusMatch;
+            });
+            
+            currentPage = 1;
+            renderDataOverview();
+            renderPerformanceTable();
+            renderCharts();
+        }
+
+        // 处理排序变化
+        function handleSortChange() {
+            const sortOption = sortBy.value;
+            
+            switch (sortOption) {
+                case 'contractDate-desc':
+                    filteredData.sort((a, b) => new Date(b.contractDate) - new Date(a.contractDate));
+                    break;
+                    
+                case 'contractDate-asc':
+                    filteredData.sort((a, b) => new Date(a.contractDate) - new Date(b.contractDate));
+                    break;
+                    
+                case 'capacity-desc':
+                    filteredData.sort((a, b) => b.capacity - a.capacity);
+                    break;
+                    
+                case 'capacity-asc':
+                    filteredData.sort((a, b) => a.capacity - b.capacity);
+                    break;
+                    
+                case 'commissionDate-desc':
+                    filteredData.sort((a, b) => {
+                        // 处理可能为空的投产日期
+                        if (!a.commissionDate) return 1;
+                        if (!b.commissionDate) return -1;
+                        return new Date(b.commissionDate) - new Date(a.commissionDate);
+                    });
+                    break;
+                    
+                case 'commissionDate-asc':
+                    filteredData.sort((a, b) => {
+                        // 处理可能为空的投产日期
+                        if (!a.commissionDate) return 1;
+                        if (!b.commissionDate) return -1;
+                        return new Date(a.commissionDate) - new Date(b.commissionDate);
+                    });
+                    break;
+            }
+            
+            currentPage = 1;
+            renderPerformanceTable();
+        }
+
+        // 渲染公司基本信息
+        function renderCompanyInfo() {
+            document.getElementById('company-name').textContent = currentCompany.name;
+            document.getElementById('company-industry').textContent = currentCompany.industry;
+            document.getElementById('company-founded').textContent = currentCompany.founded;
+            
+            const companyLogo = document.getElementById('company-logo');
+            if (currentCompany.logo) {
+                companyLogo.innerHTML = `<img src="${currentCompany.logo}" alt="${currentCompany.name}" class="w-full h-full object-contain">`;
+            } else {
+                companyLogo.innerHTML = '<i class="fa fa-building text-3xl text-neutral-500"></i>';
+            }
+        }
+
+        // 渲染火电项目数据概览
+        function renderDataOverview() {
+            if (filteredData.length > 0) {
+                // 计算总项目数量
+                const totalProjects = filteredData.length;
+                document.getElementById('total-projects').textContent = totalProjects;
+                
+                // 计算总装机容量
+                const totalCapacity = filteredData.reduce((sum, project) => sum + project.capacity, 0);
+                document.getElementById('total-capacity').textContent = totalCapacity.toLocaleString();
+                
+                // 计算已投产项目数量
+                const commissionedProjects = filteredData.filter(project => project.status === '已投产').length;
+                document.getElementById('commissioned-projects').textContent = commissionedProjects;
+                
+                // 计算平均项目容量
+                const avgCapacity = totalCapacity / totalProjects;
+                document.getElementById('avg-capacity').textContent = Math.round(avgCapacity).toLocaleString();
+            }
+        }
+
+        // 渲染增长元素（带颜色和图标）
+        function renderGrowthElement(element, value) {
+            const isPositive = value > 0;
+            const absValue = Math.abs(value * 100).toFixed(2);
+            
+            element.className = `ml-2 text-sm font-medium ${isPositive ? 'text-success' : 'text-danger'}`;
+            element.innerHTML = `<i class="fa fa-arrow-${isPositive ? 'up' : 'down'} mr-0.5"></i>${absValue}%`;
+        }
+
+        // 渲染火电项目业绩数据表格
+        function renderPerformanceTable() {
+            const tableBody = document.getElementById('performance-table-body');
+            tableBody.innerHTML = '';
+            
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = Math.min(startIndex + itemsPerPage, filteredData.length);
+            const pageData = filteredData.slice(startIndex, endIndex);
+            
+            if (pageData.length === 0) {
+                const emptyRow = document.createElement('tr');
+                emptyRow.innerHTML = `
+                    <td colspan="10" class="px-6 py-4 text-center text-neutral-500">
+                        没有符合条件的火电项目数据
+                    </td>
+                `;
+                tableBody.appendChild(emptyRow);
+            } else {
+                pageData.forEach(item => {
+                    const row = document.createElement('tr');
+                    
+                    // 根据项目状态设置行样式
+                    let statusClass = '';
+                    if (item.status === '已投产') {
+                        statusClass = 'bg-green-50';
+                    } else if (item.status === '已开工') {
+                        statusClass = 'bg-blue-50';
+                    }
+                    
+                    row.className = statusClass;
+                    
+                    // 设置状态标签样式
+                    let statusBadgeClass = '';
+                    if (item.status === '已投产') {
+                        statusBadgeClass = 'bg-green-100 text-green-800';
+                    } else if (item.status === '已开工') {
+                        statusBadgeClass = 'bg-blue-100 text-blue-800';
+                    } else if (item.status === '已签订') {
+                        statusBadgeClass = 'bg-yellow-100 text-yellow-800';
+                    }
+                    
+                    // 设置机组类型标签样式
+                    let unitTypeBadgeClass = item.unitType === '燃煤' ? 'bg-red-100 text-red-800' : 'bg-purple-100 text-purple-800';
+                    
+                    // 设置工作内容标签样式
+                    let workScopeClass = '';
+                    if (item.workScope.includes('EPC') || item.workScope.includes('总承包')) {
+                        workScopeClass = 'bg-indigo-100 text-indigo-800';
+                    } else if (item.workScope.includes('设计')) {
+                        workScopeClass = 'bg-teal-100 text-teal-800';
+                    } else if (item.workScope.includes('咨询') || item.workScope.includes('研究')) {
+                        workScopeClass = 'bg-amber-100 text-amber-800';
+                    } else {
+                        workScopeClass = 'bg-gray-100 text-gray-800';
+                    }
+                    
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap">${item.projectName}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${item.capacity}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${unitTypeBadgeClass}">
+                                ${item.unitType}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">${item.coolingType}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${item.owner}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${workScopeClass}">
+                                ${item.workScope}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">${item.contractDate}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${item.startDate || '-'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${item.commissionDate || '-'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusBadgeClass}">
+                                ${item.status}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">${item.dataSource}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="flex items-center">
+                                <div class="w-16 bg-neutral-200 rounded-full h-2.5 mr-2">
+                                    <div class="bg-secondary h-2.5 rounded-full" style="width: ${item.confidenceScore * 100}%"></div>
+                                </div>
+                                <span>${(item.confidenceScore * 100).toFixed(0)}%</span>
+                            </div>
+                        </td>
+                    `;
+                    
+                    tableBody.appendChild(row);
+                });
+            }
+            
+            // 更新分页信息
+            document.getElementById('showing-entries-start').textContent = filteredData.length > 0 ? startIndex + 1 : 0;
+            document.getElementById('showing-entries-end').textContent = Math.min(startIndex + itemsPerPage, filteredData.length);
+            document.getElementById('total-entries').textContent = filteredData.length;
+            
+            // 更新分页按钮状态
+            prevPageBtn.disabled = currentPage === 1;
+            nextPageBtn.disabled = endIndex >= filteredData.length;
+            
+            prevPageBtn.className = `relative inline-flex items-center px-2 py-2 rounded-l-md border border-neutral-300 bg-white text-sm font-medium ${currentPage === 1 ? 'text-neutral-400 cursor-not-allowed' : 'text-neutral-500 hover:bg-neutral-50'}`;
+            nextPageBtn.className = `relative inline-flex items-center px-2 py-2 rounded-r-md border border-neutral-300 bg-white text-sm font-medium ${endIndex >= filteredData.length ? 'text-neutral-400 cursor-not-allowed' : 'text-neutral-500 hover:bg-neutral-50'}`;
+        }
+
+        // 渲染火电项目图表
+        function renderCharts() {
+            if (filteredData.length === 0) return;
+            
+            // 准备项目容量分布图表数据（按机组类型分组）
+            const capacityDistribution = {
+                '燃煤': {},
+                '燃气': {}
+            };
+            
+            filteredData.forEach(project => {
+                const capacityRange = `${Math.floor(project.capacity / 100) * 100}-${Math.ceil(project.capacity / 100) * 100}MW`;
+                capacityDistribution[project.unitType][capacityRange] = (capacityDistribution[project.unitType][capacityRange] || 0) + 1;
+            });
+            
+            const capacityLabels = Object.keys(capacityDistribution);
+            const capacityData = Object.values(capacityDistribution);
+            
+            // 获取所有容量范围标签
+            const allCapacityRanges = [...new Set([
+                ...Object.keys(capacityDistribution['燃煤']),
+                ...Object.keys(capacityDistribution['燃气'])
+            ])].sort((a, b) => parseInt(a.split('-')[0]) - parseInt(b.split('-')[0]));
+            
+            // 准备数据集
+            const coalData = allCapacityRanges.map(range => capacityDistribution['燃煤'][range] || 0);
+            const gasData = allCapacityRanges.map(range => capacityDistribution['燃气'][range] || 0);
+            
+            // 渲染项目容量分布图表
+            const capacityChartCtx = document.getElementById('capacity-chart').getContext('2d');
+            if (window.capacityChart) {
+                window.capacityChart.destroy();
+            }
+            
+            window.capacityChart = new Chart(capacityChartCtx, {
+                type: 'bar',
+                data: {
+                    labels: allCapacityRanges,
+                    datasets: [
+                        {
+                            label: '燃煤机组',
+                            data: coalData,
+                            backgroundColor: 'rgba(229, 62, 62, 0.7)',
+                            borderColor: 'rgba(229, 62, 62, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: '燃气机组',
+                            data: gasData,
+                            backgroundColor: 'rgba(147, 51, 234, 0.7)',
+                            borderColor: 'rgba(147, 51, 234, 1)',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `项目数量: ${context.raw}个`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // 准备项目状态分布图表数据（按机组类型分组）
+            const statusDistribution = {
+                '燃煤': {
+                    '已签订': 0,
+                    '已开工': 0,
+                    '已投产': 0
+                },
+                '燃气': {
+                    '已签订': 0,
+                    '已开工': 0,
+                    '已投产': 0
+                }
+            };
+            
+            filteredData.forEach(project => {
+                statusDistribution[project.unitType][project.status]++;
+            });
+            
+            // 渲染项目状态分布图表（堆叠柱状图）
+            const statusChartCtx = document.getElementById('status-chart').getContext('2d');
+            if (window.statusChart) {
+                window.statusChart.destroy();
+            }
+            
+            window.statusChart = new Chart(statusChartCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['已签订', '已开工', '已投产'],
+                    datasets: [
+                        {
+                            label: '燃煤机组',
+                            data: [
+                                statusDistribution['燃煤']['已签订'],
+                                statusDistribution['燃煤']['已开工'],
+                                statusDistribution['燃煤']['已投产']
+                            ],
+                            backgroundColor: 'rgba(229, 62, 62, 0.7)',
+                            borderColor: 'rgba(229, 62, 62, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: '燃气机组',
+                            data: [
+                                statusDistribution['燃气']['已签订'],
+                                statusDistribution['燃气']['已开工'],
+                                statusDistribution['燃气']['已投产']
+                            ],
+                            backgroundColor: 'rgba(147, 51, 234, 0.7)',
+                            borderColor: 'rgba(147, 51, 234, 1)',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            stacked: true
+                        },
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.dataset.label || '';
+                                    const value = context.raw || 0;
+                                    return `${label}: ${value}个项目`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 处理上一页
+        function handlePrevPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                renderPerformanceTable();
+            }
+        }
+
+        // 处理下一页
+        function handleNextPage() {
+            const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+            if (currentPage < totalPages) {
+                currentPage++;
+                renderPerformanceTable();
+            }
+        }
+
+        // 导出为CSV
+        function exportToCSV() {
+            if (!currentCompany || filteredData.length === 0) {
+                alert('没有可导出的火电项目数据');
+                return;
+            }
+            
+            // 准备CSV数据
+            let csvContent = "项目名称,项目容量(MW),机组类型,冷却方式,业主方,工作内容,合同签订时间,开工时间,投产时间,项目状态,数据来源,可信度\n";
+            
+            filteredData.forEach(item => {
+                csvContent += `"${item.projectName}",`;
+                csvContent += `${item.capacity},`;
+                csvContent += `${item.unitType},`;
+                csvContent += `${item.coolingType},`;
+                csvContent += `"${item.owner}",`;
+                csvContent += `"${item.workScope}",`;
+                csvContent += `${item.contractDate},`;
+                csvContent += `${item.startDate || ''},`;
+                csvContent += `${item.commissionDate || ''},`;
+                csvContent += `${item.status},`;
+                csvContent += `"${item.dataSource}",`;
+                csvContent += `${item.confidenceScore}\n`;
+            });
+            
+            // 创建下载链接
+            const encodedUri = encodeURI("data:text/csv;charset=utf-8," + csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `${currentCompany.name}_火电项目业绩数据.csv`);
+            document.body.appendChild(link);
+            
+            // 触发下载
+            link.click();
+            
+            // 清理
+            document.body.removeChild(link);
+        }
+
+        // 导出为Excel（模拟）
+        function exportToExcel() {
+            if (!currentCompany || filteredData.length === 0) {
+                alert('没有可导出的火电项目数据');
+                return;
+            }
+            
+            // 模拟Excel导出（实际上还是导出CSV，但文件名是.xls）
+            alert('Excel导出功能正在开发中，目前将导出为CSV格式文件');
+            
+            // 准备CSV数据
+            let csvContent = "项目名称,项目容量(MW),机组类型,冷却方式,业主方,工作内容,合同签订时间,开工时间,投产时间,项目状态,数据来源,可信度\n";
+            
+            filteredData.forEach(item => {
+                csvContent += `"${item.projectName}",`;
+                csvContent += `${item.capacity},`;
+                csvContent += `${item.unitType},`;
+                csvContent += `${item.coolingType},`;
+                csvContent += `"${item.owner}",`;
+                csvContent += `"${item.workScope}",`;
+                csvContent += `${item.contractDate},`;
+                csvContent += `${item.startDate || ''},`;
+                csvContent += `${item.commissionDate || ''},`;
+                csvContent += `${item.status},`;
+                csvContent += `"${item.dataSource}",`;
+                csvContent += `${item.confidenceScore}\n`;
+            });
+            
+            // 创建下载链接
+            const encodedUri = encodeURI("data:text/csv;charset=utf-8," + csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `${currentCompany.name}_火电项目业绩数据.xls`);
+            document.body.appendChild(link);
+            
+            // 触发下载
+            link.click();
+            
+            // 清理
+            document.body.removeChild(link);
+        }
+
+        // 格式化货币
+        function formatCurrency(value) {
+            if (value >= 100000000) {
+                // 大于1亿，显示为亿元
+                return `¥${(value / 100000000).toFixed(2)}亿`;
+            } else if (value >= 10000) {
+                // 大于1万，显示为万元
+                return `¥${(value / 10000).toFixed(2)}万`;
+            } else {
+                // 小于1万，直接显示
+                return `¥${value.toFixed(2)}`;
+            }
+        }
+
+        // 初始化应用
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
